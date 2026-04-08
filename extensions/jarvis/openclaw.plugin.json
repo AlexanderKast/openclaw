@@ -1,0 +1,13 @@
+{
+  "id": "jarvis",
+  "name": "Jarvis",
+  "description": "Jarvis — asistente personal del ecosistema Kreoon. Personalidad parcero, sub-agentes (core, ops, content, memory, social, lead-hunter, analyst, engine, brand-researcher) y connectors propietarios (WhatsApp, ElevenLabs, Whisper, Gmail, Calendar, Meta Ads, CouchDB, Obsidian).",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "couchdbUrl": { "type": "string" },
+      "obsidianDb": { "type": "string", "default": "obsidian-vault" }
+    }
+  }
+}
