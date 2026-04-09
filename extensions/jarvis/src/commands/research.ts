@@ -26,23 +26,23 @@ export function createResearchCommand(api: OpenClawPluginApi) {
       const handleMatch = raw.match(/@(\w[\w._]{1,30}\w)/);
 
       try {
-        // TODO(phase-4): invoke sub-agent once registered, e.g.
-        //   const result = await api.runtime.subagent.run({
-        //     agent: "jarvis/brand-researcher",
-        //     input: { email: emailMatch?.[1], handle: handleMatch?.[1] },
-        //   });
-        // For now return a stub so the command is wired end-to-end.
-        if (emailMatch) {
-          return {
-            text: `Dale, investigando la marca por email: ${emailMatch[1]}. (brand-researcher pendiente de fase 4)`,
-          };
+        const userId = (ctx as { userId?: string }).userId ?? "default";
+        const target = emailMatch?.[1] ?? (handleMatch ? `@${handleMatch[1]}` : null);
+        if (!target) {
+          return { text: "Uso: /research <email@dominio.com> o /research @handle" };
         }
-        if (handleMatch) {
-          return {
-            text: `Mirando esa marca @${handleMatch[1]}... (brand-researcher pendiente de fase 4)`,
-          };
-        }
-        return { text: "Uso: /research <email@dominio.com> o /research @handle" };
+        const { runId } = await api.runtime.subagent.run({
+          sessionKey: `jarvis-brand-researcher:${userId}`,
+          message: emailMatch
+            ? `Investiga la marca del email: ${emailMatch[1]}`
+            : `Diagnostica la marca @${handleMatch![1]}`,
+          deliver: false,
+        });
+        return {
+          text: emailMatch
+            ? `Dale, investigando la marca de ${emailMatch[1]}... (runId: ${runId})`
+            : `Mirando @${handleMatch![1]}, ya te cuento... (runId: ${runId})`,
+        };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         api.logger?.error?.(`[jarvis] /research failed: ${message}`);

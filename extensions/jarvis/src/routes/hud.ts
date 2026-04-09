@@ -24,6 +24,29 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import { createStoreMemoryTool } from "../tools/memory/store-memory.js";
+import { createRetrieveMemoryTool } from "../tools/memory/retrieve-memory.js";
+import { createSearchMemoryTool } from "../tools/memory/search-memory.js";
+
+const PLUGIN_VERSION = "0.1.0";
+const TOOL_COUNT = 53;
+const STARTED_AT = Date.now();
+
+async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    req.on("data", (chunk) => (data += chunk));
+    req.on("end", () => {
+      if (!data) return resolve({});
+      try {
+        resolve(JSON.parse(data) as Record<string, unknown>);
+      } catch (err) {
+        reject(err);
+      }
+    });
+    req.on("error", reject);
+  });
+}
 
 // These SDK types aren't re-exported from any public subpath — we inline them.
 type OpenClawPluginHttpRouteHandler = (
@@ -45,15 +68,22 @@ type RouteSpec = {
 };
 
 const HUD_ROUTES: RouteSpec[] = [
-  { method: "GET", path: "/plugins/jarvis/api/chat", label: "chat" },
+  { method: "POST", path: "/plugins/jarvis/api/chat", label: "chat" },
   { method: "POST", path: "/plugins/jarvis/api/tts", label: "tts" },
   { method: "GET", path: "/plugins/jarvis/api/system", label: "system" },
   { method: "POST", path: "/plugins/jarvis/api/agents", label: "agents" },
-  { method: "GET", path: "/plugins/jarvis/api/memory", label: "memory" },
+  { method: "POST", path: "/plugins/jarvis/api/memory", label: "memory" },
   { method: "POST", path: "/plugins/jarvis/api/engine", label: "engine" },
   { method: "GET", path: "/plugins/jarvis/api/calendar", label: "calendar" },
   { method: "POST", path: "/plugins/jarvis/api/analyst", label: "analyst" },
 ];
+
+// Memory tool singletons for direct HTTP invocation (bypassing the LLM).
+const memoryTools = {
+  store: createStoreMemoryTool(),
+  retrieve: createRetrieveMemoryTool(),
+  search: createSearchMemoryTool(),
+};
 
 function readBearerToken(req: IncomingMessage): string | null {
   const header = req.headers["authorization"];
@@ -94,17 +124,91 @@ function createHudHandler(
       return true;
     }
 
-    api.logger?.info?.(`[jarvis:hud] ${spec.method} ${spec.path} handled (stub)`);
+    api.logger?.info?.(`[jarvis:hud] ${spec.method} ${spec.path}`);
 
-    // TODO(phase-4): delegate to the real handler ported from
-    // jarvis-assistant/src/routes/<spec.label>.ts
-    writeJson(res, 501, {
-      status: "not_implemented",
-      route: spec.label,
-      method: spec.method,
-      path: spec.path,
-    });
-    return true;
+    try {
+      switch (spec.label) {
+        case "system": {
+          writeJson(res, 200, {
+            status: "ok",
+            plugin: "jarvis",
+            version: PLUGIN_VERSION,
+            tools: TOOL_COUNT,
+            uptime: process.uptime(),
+            startedAt: STARTED_AT,
+          });
+          return true;
+        }
+        case "chat": {
+          const body = await readJsonBody(req);
+          const message = typeof body.message === "string" ? body.message : "";
+          const userId = typeof body.userId === "string" ? body.userId : "web";
+          if (!message.trim()) {
+            writeJson(res, 400, { error: "missing_message" });
+            return true;
+          }
+          const { runId } = await api.runtime.subagent.run({
+            sessionKey: `jarvis-core:${userId}`,
+            message,
+            deliver: false,
+          });
+          writeJson(res, 200, { runId });
+          return true;
+        }
+        case "engine": {
+          const { runId } = await api.runtime.subagent.run({
+            sessionKey: "jarvis-engine:manual",
+            message: "Ejecuta el motor diario de contenido",
+            deliver: false,
+          });
+          writeJson(res, 200, { runId });
+          return true;
+        }
+        case "memory": {
+          const body = await readJsonBody(req);
+          const action = typeof body.action === "string" ? body.action : "";
+          let tool;
+          let params: Record<string, unknown>;
+          if (action === "store") {
+            tool = memoryTools.store;
+            params = {
+              key: body.key,
+              value: body.value,
+              namespace: body.namespace,
+            };
+          } else if (action === "retrieve") {
+            tool = memoryTools.retrieve;
+            params = { key: body.key, namespace: body.namespace };
+          } else if (action === "search") {
+            tool = memoryTools.search;
+            params = { query: body.query, namespace: body.namespace };
+          } else {
+            writeJson(res, 400, {
+              error: "invalid_action",
+              expected: ["store", "retrieve", "search"],
+            });
+            return true;
+          }
+          const result = await tool.execute(`hud-${Date.now()}`, params);
+          writeJson(res, 200, { action, result });
+          return true;
+        }
+        default: {
+          // tts, agents, calendar, analyst — pending in phase 4b
+          writeJson(res, 501, {
+            status: "not_implemented",
+            route: spec.label,
+            note: "Pending port from jarvis-assistant/src/routes",
+          });
+          return true;
+        }
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      api.logger?.error?.(`[jarvis:hud] ${spec.label} failed: ${message}`);
+      writeJson(res, 500, { error: "internal_error", message });
+      return true;
+    }
   };
 }
 

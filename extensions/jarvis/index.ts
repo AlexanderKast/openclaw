@@ -1,4 +1,7 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // Core
 import { createRouteToAgentTool } from "./src/tools/core/route-to-agent.js";
@@ -79,8 +82,7 @@ import { createResearchCommand } from "./src/commands/research.js";
 import { createEngineCommand } from "./src/commands/engine.js";
 import { createDiagnoseCommand } from "./src/commands/diagnose.js";
 import { registerHudRoutes } from "./src/routes/hud.js";
-// Pre-routing helper is exported for future hook integration.
-// See src/hooks/pre-routing.ts — TODO(phase-4) on hook wiring.
+import { detectPreHook } from "./src/hooks/pre-routing.js";
 export { detectPreHook } from "./src/hooks/pre-routing.js";
 
 /**
@@ -178,12 +180,77 @@ export default definePluginEntry({
     // === Phase 4: HTTP routes for the web HUD ===
     registerHudRoutes(api);
 
-    // === Phase 4: pre-routing hook ===
-    // TODO(phase-4): wire `detectPreHook` to `api.registerHook(...)` once we
-    // confirm which event name corresponds to "before the root agent dispatches".
-    // Current SDK exposes `before_tool_call` / `before_agent_reply` / etc. —
-    // none is a clean fit for "force delegation to sub-agent X before the
-    // root dispatcher runs". For now pre-routing decisions are consumed by
-    // the slash commands above and by the sub-agents directly (phase 4b).
+    // === Phase 4: agent:bootstrap hook — inject Jarvis "parcero" SOUL.md ===
+    // This is the canonical way to install the Jarvis personality on the
+    // root agent without touching the operator's workspace filesystem.
+    // The bundled `bootstrap-extra-files` hook uses the same seam (mutating
+    // `context.bootstrapFiles`) — see src/hooks/bundled/bootstrap-extra-files.
+    try {
+      const here = dirname(fileURLToPath(import.meta.url));
+      const parceroPath = join(here, "personality", "parcero.md");
+      const parceroContent = readFileSync(parceroPath, "utf8");
+
+      api.registerHook("agent:bootstrap", async (event) => {
+        if (event.type !== "agent" || event.action !== "bootstrap") return;
+        const ctx = event.context as {
+          bootstrapFiles: Array<{
+            name: string;
+            path: string;
+            content?: string;
+            missing: boolean;
+          }>;
+          workspaceDir: string;
+        };
+        // Replace any existing SOUL.md entry (or add a new one) with the
+        // Jarvis parcero persona so the root agent always speaks as Jarvis.
+        const existingIdx = ctx.bootstrapFiles.findIndex((f) => f.name === "SOUL.md");
+        const entry = {
+          name: "SOUL.md" as const,
+          path: parceroPath,
+          content: parceroContent,
+          missing: false,
+        };
+        if (existingIdx >= 0) {
+          ctx.bootstrapFiles[existingIdx] = entry;
+        } else {
+          ctx.bootstrapFiles.push(entry);
+        }
+        api.logger?.info?.("[jarvis] Injected parcero SOUL.md into agent bootstrap");
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      api.logger?.error?.(`[jarvis] Failed to register bootstrap hook: ${message}`);
+    }
+
+    // === Phase 4: message:received hook — optional pre-routing ===
+    // Uses `detectPreHook` to decide whether an inbound message should be
+    // pre-dispatched to a specific sub-agent (engine, analyst, brand-researcher)
+    // instead of the root agent. When a decision fires we run the sub-agent
+    // with `deliver: true` so the reply flows back through the channel.
+    // TODO(phase-4b): resolve role/isOwner from config instead of hardcoding.
+    api.registerHook("message:received", async (event) => {
+      if (event.type !== "message" || event.action !== "received") return;
+      const ctx = event.context as {
+        from: string;
+        content: string;
+        channelId: string;
+      };
+      try {
+        const decision = detectPreHook(ctx.content, ctx.from, true, "owner");
+        if (!decision) return;
+        const sessionKey = `jarvis-${decision.forceAgent}:${ctx.from}`;
+        await api.runtime.subagent.run({
+          sessionKey,
+          message: ctx.content,
+          deliver: true,
+        });
+        api.logger?.info?.(
+          `[jarvis] pre-routed ${ctx.channelId} inbound to ${decision.forceAgent}`,
+        );
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        api.logger?.warn?.(`[jarvis] pre-routing hook failed: ${message}`);
+      }
+    });
   },
 });

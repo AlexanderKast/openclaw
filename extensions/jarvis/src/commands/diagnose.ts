@@ -20,13 +20,14 @@ export function createDiagnoseCommand(api: OpenClawPluginApi) {
       }
       const handle = handleMatch[1];
       try {
-        // TODO(phase-4): invoke sub-agent once registered, e.g.
-        //   const result = await api.runtime.subagent.run({
-        //     agent: "jarvis/brand-researcher",
-        //     input: { handle },
-        //   });
+        const userId = (ctx as { userId?: string }).userId ?? "default";
+        const { runId } = await api.runtime.subagent.run({
+          sessionKey: `jarvis-brand-researcher:${userId}`,
+          message: `Diagnostica la marca @${handle}`,
+          deliver: false,
+        });
         return {
-          text: `Mirando @${handle}, ya te cuento... (brand-researcher sub-agent pendiente de fase 4)`,
+          text: `Mirando @${handle}, ya te cuento... (runId: ${runId})`,
         };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);

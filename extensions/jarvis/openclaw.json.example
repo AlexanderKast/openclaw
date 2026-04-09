@@ -1,0 +1,68 @@
+{
+  "//": "Ejemplo de openclaw.json para desplegar el plugin Jarvis en el VPS.",
+  "//1": "Copiar a ~/.openclaw/openclaw.json y ajustar paths. Las API keys van en .env.jarvis.",
+
+  "plugins": {
+    "enabled": ["jarvis", "whatsapp", "anthropic", "openai", "groq", "elevenlabs"],
+    "config": {
+      "jarvis": {
+        "couchdbUrl": "https://sync.kreoon.com",
+        "obsidianDb": "obsidian-vault"
+      }
+    }
+  },
+
+  "agents": {
+    "list": [
+      {
+        "id": "main",
+        "default": true,
+        "name": "Jarvis",
+        "workspace": "~/.openclaw/workspace-jarvis",
+        "agentDir": "~/.openclaw/agents/main/agent",
+        "model": "anthropic/claude-sonnet-4-6"
+      }
+    ]
+  },
+
+  "bindings": [
+    {
+      "agentId": "main",
+      "match": { "channel": "whatsapp" }
+    }
+  ],
+
+  "channels": {
+    "whatsapp": {
+      "dmPolicy": "allowlist",
+      "allowFrom": ["+573001112233"],
+      "accounts": {
+        "default": {}
+      }
+    }
+  },
+
+  "//2": "Variables de entorno esperadas (pegar en /opt/openclaw-next/.env.jarvis):",
+  "//env": {
+    "JARVIS_WEB_TOKEN": "<bearer token para la HUD>",
+    "ANTHROPIC_API_KEY": "<sk-ant-...>",
+    "OPENAI_API_KEY": "<sk-...>",
+    "GROQ_API_KEY": "<gsk_...>",
+    "OPENROUTER_API_KEY": "<sk-or-...>",
+    "GOOGLE_GEMINI_API_KEY": "<...>",
+    "ELEVENLABS_API_KEY": "<...>",
+    "ELEVENLABS_VOICE_ID": "<voice id adam o cristian>",
+    "GOOGLE_CLIENT_ID": "<oauth client id>",
+    "GOOGLE_CLIENT_SECRET": "<oauth client secret>",
+    "GOOGLE_REFRESH_TOKEN": "<refresh token founder@kreoon.com>",
+    "META_ACCESS_TOKEN": "<meta graph api token>",
+    "META_AD_ACCOUNT_ID": "act_...",
+    "GITHUB_TOKEN": "<ghp_...>",
+    "PERPLEXITY_API_KEY": "<pplx-...>",
+    "APIFY_TOKEN": "<apify_api_...>",
+    "COUCHDB_USER": "admin",
+    "COUCHDB_PASSWORD": "<...>",
+    "WHATSAPP_PHONE_NUMBER_ID": "<meta cloud api phone id>",
+    "WHATSAPP_ACCESS_TOKEN": "<meta cloud api token>"
+  }
+}

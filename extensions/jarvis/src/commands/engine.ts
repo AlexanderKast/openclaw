@@ -12,15 +12,16 @@ export function createEngineCommand(api: OpenClawPluginApi) {
     name: "engine",
     description: "Ejecuta el motor diario de contenido (reporte + guiones + B-roll).",
     acceptsArgs: false,
-    handler: async (_ctx: { args?: string }) => {
+    handler: async (ctx: { args?: string; userId?: string }) => {
       try {
-        // TODO(phase-4): invoke sub-agent once registered, e.g.
-        //   const result = await api.runtime.subagent.run({
-        //     agent: "jarvis/engine",
-        //     input: { trigger: "manual" },
-        //   });
+        const userId = ctx.userId ?? "manual";
+        const { runId } = await api.runtime.subagent.run({
+          sessionKey: `jarvis-engine:${userId}`,
+          message: "Ejecuta el motor diario de contenido",
+          deliver: false,
+        });
         return {
-          text: "Generando el contenido del día, dame un momento... (engine sub-agent pendiente de fase 4)",
+          text: `Generando el contenido del día, dame un momento... (runId: ${runId})`,
         };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
