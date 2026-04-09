@@ -2,6 +2,7 @@ import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
 // Core
 import { createRouteToAgentTool } from "./src/tools/core/route-to-agent.js";
+import { createDelegateToSubagentTool } from "./src/tools/core/delegate-to-subagent.js";
 
 // WhatsApp
 import { createWhatsAppSendTextTool } from "./src/tools/whatsapp/send-text.js";
@@ -73,6 +74,15 @@ import { createSetReminderTool } from "./src/tools/ops/set-reminder.js";
 import { createSendTeamMessageTool } from "./src/tools/ops/send-team-message.js";
 import { createListGoogleAccountsTool } from "./src/tools/ops/list-google-accounts.js";
 
+// Phase 4: commands + HTTP routes + pre-routing helpers
+import { createResearchCommand } from "./src/commands/research.js";
+import { createEngineCommand } from "./src/commands/engine.js";
+import { createDiagnoseCommand } from "./src/commands/diagnose.js";
+import { registerHudRoutes } from "./src/routes/hud.js";
+// Pre-routing helper is exported for future hook integration.
+// See src/hooks/pre-routing.ts — TODO(phase-4) on hook wiring.
+export { detectPreHook } from "./src/hooks/pre-routing.js";
+
 /**
  * Jarvis plugin para OpenClaw.
  *
@@ -87,7 +97,8 @@ export default definePluginEntry({
     "Asistente personal del ecosistema Kreoon (parcero). Sub-agentes y connectors propietarios.",
   register(api) {
     // Core
-    api.registerTool(createRouteToAgentTool());
+    api.registerTool(createRouteToAgentTool()); // legacy stub (compat)
+    api.registerTool(createDelegateToSubagentTool(api));
 
     // WhatsApp
     api.registerTool(createWhatsAppSendTextTool());
@@ -158,5 +169,21 @@ export default definePluginEntry({
     api.registerTool(createSetReminderTool());
     api.registerTool(createSendTeamMessageTool());
     api.registerTool(createListGoogleAccountsTool());
+
+    // === Phase 4: custom slash commands ===
+    api.registerCommand(createResearchCommand(api));
+    api.registerCommand(createEngineCommand(api));
+    api.registerCommand(createDiagnoseCommand(api));
+
+    // === Phase 4: HTTP routes for the web HUD ===
+    registerHudRoutes(api);
+
+    // === Phase 4: pre-routing hook ===
+    // TODO(phase-4): wire `detectPreHook` to `api.registerHook(...)` once we
+    // confirm which event name corresponds to "before the root agent dispatches".
+    // Current SDK exposes `before_tool_call` / `before_agent_reply` / etc. —
+    // none is a clean fit for "force delegation to sub-agent X before the
+    // root dispatcher runs". For now pre-routing decisions are consumed by
+    // the slash commands above and by the sub-agents directly (phase 4b).
   },
 });
