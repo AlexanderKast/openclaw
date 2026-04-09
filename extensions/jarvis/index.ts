@@ -82,6 +82,7 @@ import { createResearchCommand } from "./src/commands/research.js";
 import { createEngineCommand } from "./src/commands/engine.js";
 import { createDiagnoseCommand } from "./src/commands/diagnose.js";
 import { registerHudRoutes } from "./src/routes/hud.js";
+import { registerWhatsAppWebhook } from "./src/routes/whatsapp-webhook.js";
 import { detectPreHook } from "./src/hooks/pre-routing.js";
 export { detectPreHook } from "./src/hooks/pre-routing.js";
 
@@ -179,6 +180,10 @@ export default definePluginEntry({
 
     // === Phase 4: HTTP routes for the web HUD ===
     registerHudRoutes(api);
+
+    // === Phase 6b: WhatsApp Cloud API webhook ===
+    // Caddy rewrites jarvis.kreoon.com/webhook → this path.
+    registerWhatsAppWebhook(api);
 
     // === Phase 4: agent:bootstrap hook — inject Jarvis "parcero" SOUL.md ===
     // This is the canonical way to install the Jarvis personality on the
